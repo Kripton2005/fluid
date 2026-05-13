@@ -11,7 +11,13 @@
 
 #include "../include/lbfgs.h"
 
+#include <omp.h>
+
+#include "../include/nanoflann.hpp" // TODO move somewhere else and use
+
 double sqr(double x) { return x * x; };
+
+const double eps = 1e-10;
 
 class Vector {
   public:
@@ -208,6 +214,15 @@ void save_svg(const std::vector<Polygon> &polygons, std::string filename,
     fclose(f);
 }
 
+bool is_point_on_segment(const Vector &P, const Vector &A, const Vector &B) {
+    Vector AP = P - A;
+    Vector AB = B - A;
+    double AP_dot_AB = dot(AP, AB);
+    double AB_length_squared = dot(AB, AB);
+
+    return AP_dot_AB > -eps && AP_dot_AB < AB_length_squared + eps;
+}
+
 class VoronoiDiagram {
 
   public:
@@ -222,6 +237,24 @@ class VoronoiDiagram {
         //          Clip it with bisector of [Pi,Pj]
         //      (Lab 3, fluids) : also clip it by a disk of radius sqrt(w_i -
         //      w_air) centered at Pi
+        cells.clear();
+        cells.resize(points.size());
+#pragma omp parallel for schedule(dynamic, 1)
+        for (size_t i = 0; i < points.size(); i++) {
+            auto &Pi = points[i];
+            Polygon result;
+            result.vertices.push_back(Vector(0.0, 0.0));
+            result.vertices.push_back(Vector(1.0, 0.0));
+            result.vertices.push_back(Vector(1.0, 1.0));
+            result.vertices.push_back(Vector(0.0, 1.0));
+            for (size_t j = 0; j < points.size(); j++) {
+                if (i != j) {
+                    auto &Pj = points[j];
+                    result = clip_by_bisector(result, Pi, Pj);
+                }
+            }
+            cells[i] = result;
+        }
     }
 
     static Polygon clip_by_edge(const Polygon &V, const Vector &u,
@@ -232,13 +265,40 @@ class VoronoiDiagram {
         // Will be used to clip a polygon (a cell) by all the edges of a
         // (discretized) disk
 
-        Polygon result;
+        const Vector N =
+            Vector(v.data[1] - u.data[1], -(v.data[0] - u.data[0]));
 
+        Polygon result;
+        result.vertices.clear(); // redundant
+        for (size_t i = 0; i < V.vertices.size(); i++) {
+            auto &A = V.vertices[i];
+            auto &B = V.vertices[(i + 1) % V.vertices.size()];
+
+            bool A_inside = dot(u - A, N) > -eps;
+            bool B_inside = dot(u - B, N) > -eps;
+
+            if (A_inside != B_inside) {
+                auto P = A + dot(u - A, N) / dot(B - A, N) * (B - A);
+                if (result.vertices.empty() ||
+                    (result.vertices.back() - P).norm2() >
+                        eps) { // prevents duplicate points in case the edge
+                               // goes right through a vertex
+                    result.vertices.push_back(P);
+                }
+            }
+            if (B_inside) {
+                if (result.vertices.empty() ||
+                    (result.vertices.back() - B).norm2() > eps) {
+                    result.vertices.push_back(B);
+                }
+            }
+        }
         return result;
     }
 
     static Polygon clip_by_bisector(const Polygon &V, const Vector &P0,
-                                    const Vector &Pi, double w0, double wi) {
+                                    const Vector &Pi, double w0 = 0.0,
+                                    double wi = 0.0) {
 
         // TODO Lab 1 (Voronoi) : in Lab 1, we assume w0 = w1 = 0
         // Clip a polygon by the bisector of the segment defined by P0 (the
@@ -250,7 +310,14 @@ class VoronoiDiagram {
 
         Polygon result;
 
-        return result;
+        const Vector N =
+            Vector(Pi.data[1] - P0.data[1], -(Pi.data[0] - P0.data[0]));
+        const Vector M = (Pi + P0) / 2;
+
+        return clip_by_edge(V, M + 0.5 * N,
+                            M - 0.5 * N); // I know I'm using something from lab
+                                          // 3 but it just fits here and I
+                                          // misread that it said lab 1
     }
 
     std::vector<Vector> points; // Lab 1 (Voronoi) : the sites to consider
@@ -367,16 +434,17 @@ class Fluid {
 
 int main() {
 
-    Polygon p;
-    p.vertices.push_back(Vector(0.1, 0.2));
-    p.vertices.push_back(Vector(0.6, 0.4));
-    p.vertices.push_back(Vector(0.5, 0.7));
-    p.vertices.push_back(Vector(0.2, 0.5));
+    VoronoiDiagram vor;
 
-    std::vector<Polygon> s;
-    s.push_back(p);
+    vor.points.push_back(Vector(0.2, 0.2));
+    vor.points.push_back(Vector(0.8, 0.2));
+    vor.points.push_back(Vector(0.5, 0.8));
+    vor.points.push_back(Vector(0.3, 0.6));
+    vor.points.push_back(Vector(0.7, 0.6));
 
-    save_frame(s, "toto");
-    save_svg(s, "toto.svg");
+    vor.compute();
+
+    save_frame(vor.cells, "voronoi_test");
+    save_svg(vor.cells, "voronoi_test.svg", &vor.points);
     return 0;
 }
