@@ -11,6 +11,8 @@
 
 #include "../include/lbfgs.h"
 
+#include "../include/nanoflann_utils.h"
+
 #include <omp.h>
 
 #include "../include/nanoflann.hpp" // TODO move somewhere else and use
@@ -239,6 +241,22 @@ class VoronoiDiagram {
         //      w_air) centered at Pi
         cells.clear();
         cells.resize(points.size());
+
+        PointCloud<double> pc;
+        pc.pts.resize(points.size());
+        for (size_t i = 0; i < points.size(); i++) {
+            pc.pts[i].x = points[i].data[0];
+            pc.pts[i].y = points[i].data[1];
+        }
+        // straight from nanoFlann's demo
+        typedef nanoflann::KDTreeSingleIndexAdaptor<
+            nanoflann::L2_Simple_Adaptor<double, PointCloud<double>>,
+            PointCloud<double>, 2>
+            my_kd_tree;
+
+        my_kd_tree index(2, pc, {10});
+        index.buildIndex();
+
 #pragma omp parallel for schedule(dynamic, 1)
         for (size_t i = 0; i < points.size(); i++) {
             auto &Pi = points[i];
@@ -247,11 +265,16 @@ class VoronoiDiagram {
             result.vertices.push_back(Vector(1.0, 0.0));
             result.vertices.push_back(Vector(1.0, 1.0));
             result.vertices.push_back(Vector(0.0, 1.0));
-            for (size_t j = 0; j < points.size(); j++) {
-                if (i != j) {
-                    auto &Pj = points[j];
-                    result = clip_by_bisector(result, Pi, Pj);
-                }
+
+            size_t num_results = 11; // 10 + one is our point
+            std::vector<uint32_t> ret_index(num_results);
+            std::vector<double> out_dist_sqr(num_results);
+            num_results = index.knnSearch(&Pi.data[0], num_results,
+                                          &ret_index[0], &out_dist_sqr[0]);
+            std::cout << "knnSearch(): num_results=" << num_results << "\n";
+            for (size_t j = 1; j < num_results; j++) {
+                auto &Pj = points[ret_index[j]];
+                result = clip_by_bisector(result, Pi, Pj);
             }
             cells[i] = result;
         }
