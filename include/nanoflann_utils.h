@@ -33,7 +33,7 @@
 
 template <typename T> struct PointCloud {
     struct Point {
-        T x, y;
+        T x, y, z;
     };
 
     using coord_t = T; //!< The type of each coordinate
@@ -52,6 +52,8 @@ template <typename T> struct PointCloud {
             return pts[idx].x;
         else if (dim == 1)
             return pts[idx].y;
+        else
+            return pts[idx].z;
     }
 
     // Optional bounding-box computation: return false to default to a standard
@@ -73,6 +75,7 @@ void generateRandomPointCloudRanges(PointCloud<T> &pc, const size_t N,
     for (size_t i = 0; i < N; i++) {
         pc.pts[i].x = max_range_x * (rand() % 1000) / T(1000);
         pc.pts[i].y = max_range_y * (rand() % 1000) / T(1000);
+        pc.pts[i].z = max_range_z * (rand() % 1000) / T(1000);
     }
 }
 

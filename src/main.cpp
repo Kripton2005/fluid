@@ -1,10 +1,10 @@
 #include <cstring>
 #define _CRT_SECURE_NO_WARNINGS 1
 
-#include <iostream>
-#include <sstream>
-
 #include <cmath>
+#include <iostream>
+#include <random>
+#include <sstream>
 #include <vector>
 
 #include "../include/stb_image_write.h"
@@ -26,6 +26,7 @@ class Vector {
     explicit Vector(double x = 0, double y = 0) {
         data[0] = x;
         data[1] = y;
+        data[2] = 0;
     }
     double norm2() const { return data[0] * data[0] + data[1] * data[1]; }
     double norm() const { return sqrt(norm2()); }
@@ -36,7 +37,7 @@ class Vector {
     }
     double operator[](int i) const { return data[i]; };
     double &operator[](int i) { return data[i]; };
-    double data[2];
+    double data[3];
 };
 
 Vector operator+(const Vector &a, const Vector &b) {
@@ -63,9 +64,14 @@ class Polygon {
     double area() {
         if (vertices.size() < 3)
             return 0;
-        // TODO Lab 3
         // Compute the area of the polygon
-        return -111;
+        double res = 0;
+        for (size_t i = 0; i < vertices.size(); i++) {
+            const auto &A = vertices[i];
+            const auto &B = vertices[(i + 1) % vertices.size()];
+            res += (A[0] * B[1] - A[1] * B[0]);
+        }
+        return 0.5 * std::abs(res);
     }
 
     Vector centroid() {
@@ -81,10 +87,25 @@ class Polygon {
         if (vertices.size() < 3)
             return 0;
 
-        // TODO Lab 3
-        // Compute the integral of ||x-Pi||^2 over the polygon
+        double res = 0;
 
-        return -111;
+        const auto &A = vertices[0];
+        // Compute the integral of ||x-Pi||^2 over the polygon
+        for (size_t i = 1; i < vertices.size() - 1; i++) {
+            const auto &B = vertices[i];
+            const auto &C = vertices[i + 1];
+            Polygon V;
+            V.vertices.emplace_back(A);
+            V.vertices.emplace_back(B);
+            V.vertices.emplace_back(C);
+            double sub_res = 0;
+            for (int k = 0; k < 3; k++)
+                for (int l = k; l < 3; l++)
+                    sub_res += dot(V.vertices[k] - Pi, V.vertices[l] - Pi);
+            res += 1.0 / 6.0 * V.area() * sub_res;
+        }
+
+        return res;
     }
 
     std::vector<Vector> vertices;
@@ -232,7 +253,7 @@ class VoronoiDiagram {
 
     void compute() {
 
-        // TODO Lab 1 (Voronoi)
+        // Lab 1 (Voronoi)
         // For all sites Pi (in parallel) :
         //      Start with a unit square
         //      For all other sites Pj (optionally, only k nearest neighbors) :
@@ -244,17 +265,21 @@ class VoronoiDiagram {
 
         PointCloud<double> pc;
         pc.pts.resize(points.size());
+
+        auto maxi = 2 * *std::max_element(weights.begin(), weights.end());
+
         for (size_t i = 0; i < points.size(); i++) {
-            pc.pts[i].x = points[i].data[0];
-            pc.pts[i].y = points[i].data[1];
+            pc.pts[i].x = points[i][0];
+            pc.pts[i].y = points[i][1];
+            pc.pts[i].z = sqrt(maxi - weights[i]); // TODO beautify
         }
         // straight from nanoFlann's demo
         typedef nanoflann::KDTreeSingleIndexAdaptor<
             nanoflann::L2_Simple_Adaptor<double, PointCloud<double>>,
-            PointCloud<double>, 2>
+            PointCloud<double>, 3>
             my_kd_tree;
 
-        my_kd_tree index(2, pc, {10});
+        my_kd_tree index(3, pc, {10});
         index.buildIndex();
 
 #pragma omp parallel for schedule(dynamic, 1)
@@ -266,15 +291,17 @@ class VoronoiDiagram {
             result.vertices.push_back(Vector(1.0, 1.0));
             result.vertices.push_back(Vector(0.0, 1.0));
 
-            size_t num_results = 11; // 10 + one is our point
+            size_t num_results = 31; // 30 + maybe one is our point
             std::vector<uint32_t> ret_index(num_results);
             std::vector<double> out_dist_sqr(num_results);
-            num_results = index.knnSearch(&Pi.data[0], num_results,
-                                          &ret_index[0], &out_dist_sqr[0]);
-            std::cout << "knnSearch(): num_results=" << num_results << "\n";
-            for (size_t j = 1; j < num_results; j++) {
+            num_results = index.knnSearch(&Pi[0], num_results, &ret_index[0],
+                                          &out_dist_sqr[0]);
+            for (size_t j = 0; j < num_results; j++) {
+                if (ret_index[j] == i)
+                    continue;
                 auto &Pj = points[ret_index[j]];
-                result = clip_by_bisector(result, Pi, Pj);
+                result = clip_by_bisector(result, Pi, Pj, weights[i],
+                                          weights[ret_index[j]]);
             }
             cells[i] = result;
         }
@@ -288,7 +315,7 @@ class VoronoiDiagram {
         // Will be used to clip a polygon (a cell) by all the edges of a
         // (discretized) disk
 
-        const Vector N =
+        /* const Vector N =
             Vector(v.data[1] - u.data[1], -(v.data[0] - u.data[0]));
 
         Polygon result;
@@ -315,7 +342,8 @@ class VoronoiDiagram {
                     result.vertices.push_back(B);
                 }
             }
-        }
+        } */
+        Polygon result;
         return result;
     }
 
@@ -323,24 +351,47 @@ class VoronoiDiagram {
                                     const Vector &Pi, double w0 = 0.0,
                                     double wi = 0.0) {
 
-        // TODO Lab 1 (Voronoi) : in Lab 1, we assume w0 = w1 = 0
+        // Lab 1 (Voronoi) : in Lab 1, we assume w0 = w1 = 0
         // Clip a polygon by the bisector of the segment defined by P0 (the
         // current site of the Voronoi cell being computed) and Pi (another
         // site)
 
-        // TODO Lab 2 (Semi-Discrete Optimal Transport) : extend to Laguerre
+        // Lab 2 (Semi-Discrete Optimal Transport) : extend to Laguerre
         // cells, i.e., w0 != w1
 
-        Polygon result;
-
-        const Vector N =
-            Vector(Pi.data[1] - P0.data[1], -(Pi.data[0] - P0.data[0]));
         const Vector M = (Pi + P0) / 2;
+        const Vector M_prime =
+            M + (w0 - wi) / (2 * dot(P0 - Pi, P0 - Pi)) * (Pi - P0);
 
-        return clip_by_edge(V, M + 0.5 * N,
-                            M - 0.5 * N); // I know I'm using something from lab
-                                          // 3 but it just fits here and I
-                                          // misread that it said lab 1
+        Polygon result;
+        result.vertices.clear(); // redundant
+        for (size_t i = 0; i < V.vertices.size(); i++) {
+            auto &A = V.vertices[i];
+            auto &B = V.vertices[(i + 1) % V.vertices.size()];
+
+            bool A_inside =
+                dot(A - P0, A - P0) - w0 < dot(A - Pi, A - Pi) - wi + eps;
+            bool B_inside =
+                dot(B - P0, B - P0) - w0 < dot(B - Pi, B - Pi) - wi + eps;
+
+            if (A_inside != B_inside) {
+                auto P = A + dot(M_prime - A, Pi - P0) / dot(B - A, Pi - P0) *
+                                 (B - A);
+                if (result.vertices.empty() ||
+                    (result.vertices.back() - P).norm2() >
+                        eps) { // prevents duplicate points in case the edge
+                               // goes right through a vertex
+                    result.vertices.push_back(P);
+                }
+            }
+            if (B_inside) {
+                if (result.vertices.empty() ||
+                    (result.vertices.back() - B).norm2() > eps) {
+                    result.vertices.push_back(B);
+                }
+            }
+        }
+        return result;
     }
 
     std::vector<Vector> points; // Lab 1 (Voronoi) : the sites to consider
@@ -374,14 +425,20 @@ static lbfgsfloatval_t evaluate(void *instance, const lbfgsfloatval_t *x,
     memcpy(&ot->vor.weights[0], x, n * sizeof(x[0]));
     ot->vor.compute();
 
-    // Lab 2 (Optimal transport) : compute the function to be minimized (fx) and
-    // its gradient (g[i], i=0..n-1) Lab 3 (fluid) : adapt these functions to
-    // support partial optimal transport (now "n" has been increased by 1 to
-    // account for the air variable)
+    // Lab 2 (Optimal transport) : compute the function to be minimized
+    // (fx) and its gradient (g[i], i=0..n-1) Lab 3 (fluid) : adapt these
+    // functions to support partial optimal transport (now "n" has been
+    // increased by 1 to account for the air variable)
 
     lbfgsfloatval_t fx = 0.0;
-    // g[i] = ...
-    // fx = ...
+    double target_area = 1.0 / ot->vor.points.size(); // all the lambda_i
+
+    for (size_t i = 0; i < ot->vor.points.size(); i++) {
+        fx -= ot->vor.cells[i].integral_square_distance(ot->vor.points[i]) -
+              ot->vor.cells[i].area() * ot->vor.weights[i] +
+              target_area * ot->vor.weights[i];
+        g[i] = -(target_area - ot->vor.cells[i].area());
+    }
 
     return fx;
 }
@@ -455,19 +512,36 @@ class Fluid {
                          // by the fluid
 };
 
+static std::default_random_engine engine;
+thread_local std::uniform_real_distribution<double> uniform(0, 1);
+
 int main() {
 
     VoronoiDiagram vor;
 
-    vor.points.push_back(Vector(0.2, 0.2));
-    vor.points.push_back(Vector(0.8, 0.2));
-    vor.points.push_back(Vector(0.5, 0.8));
-    vor.points.push_back(Vector(0.3, 0.6));
-    vor.points.push_back(Vector(0.7, 0.6));
+    engine.seed(0);
+
+    const int N = 100;
+
+    for (int i = 0; i < N; i++) {
+        double x = uniform(engine);
+        double y = uniform(engine);
+        vor.points.push_back(Vector(x, y));
+    }
+    vor.weights.resize(N);
 
     vor.compute();
 
-    save_frame(vor.cells, "voronoi_test");
-    save_svg(vor.cells, "voronoi_test.svg", &vor.points);
+    OptimalTransport opt;
+    opt.vor = vor;
+
+    save_frame(vor.cells, "voronoi_pre_optim");
+    save_svg(vor.cells, "voronoi_pre_optim.svg", &vor.points);
+
+    opt.optimize();
+
+    save_frame(opt.vor.cells, "voronoi_optim");
+    save_svg(opt.vor.cells, "voronoi_optim.svg", &opt.vor.points);
+
     return 0;
 }
