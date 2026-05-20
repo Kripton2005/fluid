@@ -15,7 +15,7 @@
 
 #include <omp.h>
 
-#include "../include/nanoflann.hpp" // TODO move somewhere else and use
+#include "../include/nanoflann.hpp" // TODO move somewhere else
 
 double sqr(double x) { return x * x; };
 
