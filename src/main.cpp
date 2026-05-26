@@ -80,9 +80,23 @@ class Polygon {
             return Vector(0, 0);
         // Compute the centroid of the polygon
         Vector result(0, 0);
-        for (auto &vertex : vertices)
-            result = result + vertex;
-        return result * 1.0 / vertices.size();
+        double total_signed_area = 0;
+
+        const auto &A = vertices[0];
+        for (size_t i = 1; i < vertices.size() - 1; i++) {
+            const auto &B = vertices[i];
+            const auto &C = vertices[i + 1];
+            // Polygon V;
+            // V.vertices.emplace_back(A);
+            // V.vertices.emplace_back(B);
+            // V.vertices.emplace_back(C);
+            double tri_area = 0.5 * ((B[0] - A[0]) * (C[1] - A[1]) -
+                                     (B[1] - A[1]) * (C[0] - A[0]));
+            result = result + (A + B + C) / 3.0 * tri_area;
+            total_signed_area += tri_area;
+        }
+
+        return result / total_signed_area;
     }
 
     double integral_square_distance(const Vector &Pi) {
@@ -96,15 +110,18 @@ class Polygon {
         for (size_t i = 1; i < vertices.size() - 1; i++) {
             const auto &B = vertices[i];
             const auto &C = vertices[i + 1];
-            Polygon V;
-            V.vertices.emplace_back(A);
-            V.vertices.emplace_back(B);
-            V.vertices.emplace_back(C);
+            // Polygon V;
+            // V.vertices.emplace_back(A);
+            // V.vertices.emplace_back(B);
+            // V.vertices.emplace_back(C);
+            Vector V[3] = {A, B, C};
+            double tri_area = 0.5 * std::abs((B[0] - A[0]) * (C[1] - A[1]) -
+                                             (B[1] - A[1]) * (C[0] - A[0]));
             double sub_res = 0;
             for (int k = 0; k < 3; k++)
                 for (int l = k; l < 3; l++)
-                    sub_res += dot(V.vertices[k] - Pi, V.vertices[l] - Pi);
-            res += 1.0 / 6.0 * V.area() * sub_res;
+                    sub_res += dot(V[k] - Pi, V[l] - Pi);
+            res += 1.0 / 6.0 * tri_area * sub_res;
         }
 
         return res;
@@ -545,27 +562,29 @@ class Fluid {
         for (int i = 0; i < N_particles; i++) {
             Vector F_i_spring(0, 0);
             if (ot.vor.cells[i].area() > eps) {
-                F_i_spring =
-                    1 / epsilon2 * (ot.vor.cells[i].centroid() - particles[i]);
+                F_i_spring = m_i * 1 / epsilon2 *
+                             (ot.vor.cells[i].centroid() -
+                              particles[i]); // added m_i because I'm skeptical
             }
             Vector F_i = F_i_spring + m_i * g;
             new_velocities[i] = velocities[i] + dt / m_i * F_i;
-            new_particles[i] = particles[i] + dt * new_velocities[i];
-            new_velocities[i] = new_velocities[i] * 0.99; // air friction
+            new_particles[i] = particles[i] + dt * velocities[i];
+            // new_velocities[i] = new_velocities[i] * 0.99; // air friction
+            double bounce = 0.95; // some damping
             if (new_particles[i][0] < eps) {
                 new_particles[i][0] = eps;
-                new_velocities[i][0] *= -0.5; // some damping
+                new_velocities[i][0] = std::abs(new_velocities[i][0]) * bounce;
             } else if (new_particles[i][0] > 1.0 - eps) {
                 new_particles[i][0] = 1.0 - eps;
-                new_velocities[i][0] *= -0.5;
+                new_velocities[i][0] = -std::abs(new_velocities[i][0]) * bounce;
             }
 
             if (new_particles[i][1] < eps) {
                 new_particles[i][1] = eps;
-                new_velocities[i][1] *= -0.5;
+                new_velocities[i][1] = std::abs(new_velocities[i][1]) * bounce;
             } else if (new_particles[i][1] > 1.0 - eps) {
                 new_particles[i][1] = 1.0 - eps;
-                new_velocities[i][1] *= -0.5;
+                new_velocities[i][1] = -std::abs(new_velocities[i][1]) * bounce;
             }
         }
         particles = new_particles;
@@ -576,7 +595,7 @@ class Fluid {
     void run_simulation() {
         double dt = 0.002;
         std::filesystem::create_directory("fluid_video");
-        for (int i = 0; i < 500; i++) {
+        for (int i = 0; i < 1000; i++) {
             time_step(dt);
             save_frame(ot.vor.cells, "fluid_video/frame_", i);
         }
