@@ -537,7 +537,7 @@ void OptimalTransport::optimize(double fluid_volume = 1.0) {
 
 class Fluid {
   public:
-    Fluid(int N_particles = 1000) : N_particles(N_particles) {}
+    Fluid(int N_particles = 200) : N_particles(N_particles) {}
 
     void compute_vor() {
         for (int i = 0; i < N_particles; i++)
@@ -562,7 +562,7 @@ class Fluid {
         for (int i = 0; i < N_particles; i++) {
             Vector F_i_spring(0, 0);
             if (ot.vor.cells[i].area() > eps) {
-                F_i_spring = m_i * 1 / epsilon2 *
+                F_i_spring = 1 / epsilon2 *
                              (ot.vor.cells[i].centroid() -
                               particles[i]); // added m_i because I'm skeptical
             }
@@ -570,7 +570,7 @@ class Fluid {
             new_velocities[i] = velocities[i] + dt / m_i * F_i;
             new_particles[i] = particles[i] + dt * velocities[i];
             // new_velocities[i] = new_velocities[i] * 0.99; // air friction
-            double bounce = 0.95; // some damping
+            double bounce = 0.8; // some damping
             if (new_particles[i][0] < eps) {
                 new_particles[i][0] = eps;
                 new_velocities[i][0] = std::abs(new_velocities[i][0]) * bounce;
