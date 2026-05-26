@@ -84,6 +84,7 @@ class Polygon {
     }
 
     double integral_square_distance(const Vector &Pi) {
+
         if (vertices.size() < 3)
             return 0;
 
