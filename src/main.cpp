@@ -1,4 +1,5 @@
 #include <cstring>
+#include <filesystem>
 #define _CRT_SECURE_NO_WARNINGS 1
 
 #include <cmath>
@@ -15,7 +16,7 @@
 
 #include <omp.h>
 
-#include "../include/nanoflann.hpp" // TODO move somewhere else
+#include "../include/nanoflann.hpp"
 
 double sqr(double x) { return x * x; };
 
@@ -77,14 +78,14 @@ class Polygon {
     Vector centroid() {
         if (vertices.size() < 3)
             return Vector(0, 0);
-        // TODO Lab 3
         // Compute the centroid of the polygon
-
-        return Vector(-111, -111);
+        Vector result(0, 0);
+        for (auto &vertex : vertices)
+            result = result + vertex;
+        return result * 1.0 / vertices.size();
     }
 
     double integral_square_distance(const Vector &Pi) {
-
         if (vertices.size() < 3)
             return 0;
 
@@ -247,6 +248,18 @@ bool is_point_on_segment(const Vector &P, const Vector &A, const Vector &B) {
     return AP_dot_AB > -eps && AP_dot_AB < AB_length_squared + eps;
 }
 
+Polygon make_regular_polygon(Vector center, double radius, int n) {
+    // makes regular polygon of radius size radius with n vertices centered at
+    // center
+    Polygon result;
+    for (int i = 0; i < n; i++) {
+        result.vertices.push_back(
+            center +
+            radius * Vector(cos(2 * M_PI * i / n), sin(2 * M_PI * i / n)));
+    }
+    return result;
+}
+
 class VoronoiDiagram {
 
   public:
@@ -254,12 +267,11 @@ class VoronoiDiagram {
 
     void compute() {
 
-        // Lab 1 (Voronoi)
         // For all sites Pi (in parallel) :
         //      Start with a unit square
         //      For all other sites Pj (optionally, only k nearest neighbors) :
         //          Clip it with bisector of [Pi,Pj]
-        //      (Lab 3, fluids) : also clip it by a disk of radius sqrt(w_i -
+        //      (fluids) : also clip it by a disk of radius sqrt(w_i -
         //      w_air) centered at Pi
         cells.clear();
         cells.resize(points.size());
@@ -268,11 +280,12 @@ class VoronoiDiagram {
         pc.pts.resize(points.size());
 
         auto maxi = 2 * *std::max_element(weights.begin(), weights.end());
+        maxi = std::max(maxi, eps); // negative weights
 
         for (size_t i = 0; i < points.size(); i++) {
             pc.pts[i].x = points[i][0];
             pc.pts[i].y = points[i][1];
-            pc.pts[i].z = sqrt(maxi - weights[i]); // TODO beautify
+            pc.pts[i].z = sqrt(maxi - weights[i]);
         }
         // straight from nanoFlann's demo
         typedef nanoflann::KDTreeSingleIndexAdaptor<
@@ -304,6 +317,21 @@ class VoronoiDiagram {
                 result = clip_by_bisector(result, Pi, Pj, weights[i],
                                           weights[ret_index[j]]);
             }
+
+            // clip it by regular poligon with 67 vertices
+            if (weights[i] - weights.back() > eps) {
+                double radius = sqrt(
+                    weights[i] - weights.back()); // last elem is used for w_air
+                Polygon regular = make_regular_polygon(Pi, radius, 67);
+                for (size_t j = 0; j < regular.vertices.size(); j++) {
+                    auto &A = regular.vertices[j];
+                    auto &B =
+                        regular.vertices[(j + 1) % regular.vertices.size()];
+                    result = clip_by_edge(result, A, B);
+                }
+            } else {
+                result.vertices.clear(); // particle vanishes
+            }
             cells[i] = result;
         }
     }
@@ -311,12 +339,12 @@ class VoronoiDiagram {
     static Polygon clip_by_edge(const Polygon &V, const Vector &u,
                                 const Vector &v) {
 
-        // TODO Lab 3 (fluids)
+        // (fluids)
         // Clip a polygon by an edge defined by vertices u and v
         // Will be used to clip a polygon (a cell) by all the edges of a
         // (discretized) disk
 
-        /* const Vector N =
+        const Vector N =
             Vector(v.data[1] - u.data[1], -(v.data[0] - u.data[0]));
 
         Polygon result;
@@ -343,8 +371,7 @@ class VoronoiDiagram {
                     result.vertices.push_back(B);
                 }
             }
-        } */
-        Polygon result;
+        }
         return result;
     }
 
@@ -411,9 +438,10 @@ class OptimalTransport {
   public:
     OptimalTransport(){};
 
-    void optimize();
+    void optimize(double fluid_volume);
 
     VoronoiDiagram vor;
+    double fluid_volume;
 };
 
 // Labs 2 and 3
@@ -426,20 +454,31 @@ static lbfgsfloatval_t evaluate(void *instance, const lbfgsfloatval_t *x,
     memcpy(&ot->vor.weights[0], x, n * sizeof(x[0]));
     ot->vor.compute();
 
-    // Lab 2 (Optimal transport) : compute the function to be minimized
-    // (fx) and its gradient (g[i], i=0..n-1) Lab 3 (fluid) : adapt these
-    // functions to support partial optimal transport (now "n" has been
-    // increased by 1 to account for the air variable)
+    // (Optimal transport) : compute the function to be minimized
+    // (fx) and its gradient (g[i], i=0..n-1)
+    //
+    // adapt these functions to support partial optimal transport (now "n" has
+    // been increased by 1 to account for the air variable)
 
     lbfgsfloatval_t fx = 0.0;
-    double target_area = 1.0 / ot->vor.points.size(); // all the lambda_i
+    double target_area =
+        ot->fluid_volume / ot->vor.points.size(); // all the lambda_i
+    double estimated_vol_air = 1.0;
 
-    for (size_t i = 0; i < ot->vor.points.size(); i++) {
+    for (int i = 0; i < n - 1; i++)
+        estimated_vol_air -= ot->vor.cells[i].area();
+
+    double quant = (1 - ot->fluid_volume) -
+                   estimated_vol_air; // desired_vol_air - estimated_vol_air
+
+    for (int i = 0; i < n - 1; i++) {
         fx -= ot->vor.cells[i].integral_square_distance(ot->vor.points[i]) -
               ot->vor.cells[i].area() * ot->vor.weights[i] +
               target_area * ot->vor.weights[i];
         g[i] = -(target_area - ot->vor.cells[i].area());
     }
+    fx -= ot->vor.weights.back() * quant;
+    g[n - 1] = -quant;
 
     return fx;
 }
@@ -457,10 +496,12 @@ static int progress(void *instance, const lbfgsfloatval_t *x,
 }
 
 // Lab 2
-void OptimalTransport::optimize() {
+void OptimalTransport::optimize(double fluid_volume = 1.0) {
 
     lbfgsfloatval_t fx;
     std::vector<double> weights(vor.weights);
+
+    this->fluid_volume = fluid_volume;
 
     lbfgs_parameter_t param;
     // Initialize the parameters for the L-BFGS optimization.
@@ -477,30 +518,67 @@ void OptimalTransport::optimize() {
     vor.compute();
 }
 
-// Lab 3 (fluids)
 class Fluid {
   public:
     Fluid(int N_particles = 1000) : N_particles(N_particles) {}
 
-    // Lab 3 : advance the simulation dt in time
+    void compute_vor() {
+        for (int i = 0; i < N_particles; i++)
+            ot.vor.points[i] = particles[i];
+        ot.vor.compute();
+        ot.optimize(fluid_volume);
+    }
+
+    // advance the simulation dt in time
     void time_step(double dt) {
 
         double epsilon2 = 0.004 * 0.004;
         Vector g(0, -9.81);
         double m_i = 200;
 
-        // TODO Lab 3 :
         // Compute semi-discrete partial optimal transport
         // for all particles, add gravity and spring force towards cell
         // centroid, integrate acceleration->velocity and velocity->position
+        compute_vor();
+        std::vector<Vector> new_particles(N_particles),
+            new_velocities(N_particles);
+        for (int i = 0; i < N_particles; i++) {
+            Vector F_i_spring(0, 0);
+            if (ot.vor.cells[i].area() > eps) {
+                F_i_spring =
+                    1 / epsilon2 * (ot.vor.cells[i].centroid() - particles[i]);
+            }
+            Vector F_i = F_i_spring + m_i * g;
+            new_velocities[i] = velocities[i] + dt / m_i * F_i;
+            new_particles[i] = particles[i] + dt * new_velocities[i];
+            new_velocities[i] = new_velocities[i] * 0.99; // air friction
+            if (new_particles[i][0] < eps) {
+                new_particles[i][0] = eps;
+                new_velocities[i][0] *= -0.5; // some damping
+            } else if (new_particles[i][0] > 1.0 - eps) {
+                new_particles[i][0] = 1.0 - eps;
+                new_velocities[i][0] *= -0.5;
+            }
+
+            if (new_particles[i][1] < eps) {
+                new_particles[i][1] = eps;
+                new_velocities[i][1] *= -0.5;
+            } else if (new_particles[i][1] > 1.0 - eps) {
+                new_particles[i][1] = 1.0 - eps;
+                new_velocities[i][1] *= -0.5;
+            }
+        }
+        particles = new_particles;
+        velocities = new_velocities;
     }
 
     // just run the full simulation
     void run_simulation() {
         double dt = 0.002;
-        for (int i = 0; i < 1000; i++) {
+        std::filesystem::create_directory("fluid_video");
+        for (int i = 0; i < 500; i++) {
             time_step(dt);
-            save_frame(ot.vor.cells, "test", i);
+            save_frame(ot.vor.cells, "fluid_video/frame_", i);
         }
     }
 
@@ -518,31 +596,21 @@ thread_local std::uniform_real_distribution<double> uniform(0, 1);
 
 int main() {
 
-    VoronoiDiagram vor;
+    Fluid fluid;
 
     engine.seed(0);
 
-    const int N = 100;
-
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < fluid.N_particles; i++) {
         double x = uniform(engine);
         double y = uniform(engine);
-        vor.points.push_back(Vector(x, y));
+        fluid.particles.push_back(Vector(x, y));
+        fluid.ot.vor.points.push_back(Vector(x, y));
+        fluid.velocities.push_back(Vector(0, 0));
     }
-    vor.weights.resize(N);
+    fluid.ot.vor.weights.resize(fluid.N_particles + 1, 0.0);
+    fluid.fluid_volume = 0.30;
 
-    vor.compute();
-
-    OptimalTransport opt;
-    opt.vor = vor;
-
-    save_frame(vor.cells, "voronoi_pre_optim");
-    save_svg(vor.cells, "voronoi_pre_optim.svg", &vor.points);
-
-    opt.optimize();
-
-    save_frame(opt.vor.cells, "voronoi_optim");
-    save_svg(opt.vor.cells, "voronoi_optim.svg", &opt.vor.points);
+    fluid.run_simulation();
 
     return 0;
 }
