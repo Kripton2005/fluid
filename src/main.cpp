@@ -307,7 +307,7 @@ class VoronoiDiagram {
             pc.pts[i].y = points[i][1];
             pc.pts[i].z = sqrt(maxi - weights[i]);
         }
-        // straight from nanoFlann's demo
+        // straight from nanoFlann's demo (examples/pointcloud_kdd_radius.cpp)
         typedef nanoflann::KDTreeSingleIndexAdaptor<
             nanoflann::L2_Simple_Adaptor<double, PointCloud<double>>,
             PointCloud<double>, 3>
@@ -325,7 +325,7 @@ class VoronoiDiagram {
             result.vertices.push_back(Vector(1.0, 1.0));
             result.vertices.push_back(Vector(0.0, 1.0));
 
-            size_t num_results = 201; // 200 + maybe one is our point ffs
+            size_t num_results = 151; // 150 + maybe one is our point ffs
             std::vector<uint32_t> ret_index(num_results);
             std::vector<double> out_dist_sqr(num_results);
             num_results = index.knnSearch(&Pi[0], num_results, &ret_index[0],
@@ -338,11 +338,11 @@ class VoronoiDiagram {
                                           weights[ret_index[j]]);
             }
 
-            // clip it by regular poligon with 67 vertices
+            // clip it by regular poligon with 50 vertices
             if (weights[i] - weights.back() > eps) {
                 double radius = sqrt(
                     weights[i] - weights.back()); // last elem is used for w_air
-                Polygon regular = make_regular_polygon(Pi, radius, 67);
+                Polygon regular = make_regular_polygon(Pi, radius, 50);
                 for (size_t j = 0; j < regular.vertices.size(); j++) {
                     auto &A = regular.vertices[j];
                     auto &B =
@@ -596,7 +596,7 @@ class Fluid {
     // just run the full simulation
     void run_simulation() {
         compute_vor();
-        double dt = 0.005;
+        double dt = 0.01;
         std::filesystem::create_directory("fluid_video");
         for (int i = 0; i < 1000; i++) {
             time_step(dt);
