@@ -537,7 +537,7 @@ void OptimalTransport::optimize(double fluid_volume = 1.0) {
 
 class Fluid {
   public:
-    Fluid(int N_particles = 200) : N_particles(N_particles) {}
+    Fluid(int N_particles = 1000) : N_particles(N_particles) {}
 
     void compute_vor() {
         for (int i = 0; i < N_particles; i++)
@@ -562,15 +562,14 @@ class Fluid {
         for (int i = 0; i < N_particles; i++) {
             Vector F_i_spring(0, 0);
             if (ot.vor.cells[i].area() > eps) {
-                F_i_spring = 1 / epsilon2 *
-                             (ot.vor.cells[i].centroid() -
-                              particles[i]); // added m_i because I'm skeptical
+                F_i_spring =
+                    1 / epsilon2 * (ot.vor.cells[i].centroid() - particles[i]);
             }
             Vector F_i = F_i_spring + m_i * g;
             new_velocities[i] = velocities[i] + dt / m_i * F_i;
             new_particles[i] = particles[i] + dt * velocities[i];
             // new_velocities[i] = new_velocities[i] * 0.99; // air friction
-            double bounce = 0.8; // some damping
+            double bounce = 0.5; // some damping
             if (new_particles[i][0] < eps) {
                 new_particles[i][0] = eps;
                 new_velocities[i][0] = std::abs(new_velocities[i][0]) * bounce;
@@ -615,19 +614,23 @@ thread_local std::uniform_real_distribution<double> uniform(0, 1);
 
 int main() {
 
-    Fluid fluid;
+    Fluid fluid(700);
 
     engine.seed(0);
 
+    double radius = 0.25;
+    fluid.fluid_volume = M_PI * radius * radius;
+
     for (int i = 0; i < fluid.N_particles; i++) {
-        double x = uniform(engine);
-        double y = uniform(engine);
+        double r = radius * sqrt(uniform(engine));
+        double theta = 2 * M_PI * uniform(engine);
+        double x = 0.5 + r * cos(theta);
+        double y = 0.5 + r * sin(theta);
         fluid.particles.push_back(Vector(x, y));
         fluid.ot.vor.points.push_back(Vector(x, y));
         fluid.velocities.push_back(Vector(0, 0));
     }
     fluid.ot.vor.weights.resize(fluid.N_particles + 1, 0.0);
-    fluid.fluid_volume = 0.30;
 
     fluid.run_simulation();
 
