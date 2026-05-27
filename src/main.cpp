@@ -96,6 +96,9 @@ class Polygon {
             total_signed_area += tri_area;
         }
 
+        if (std::abs(total_signed_area) < 1e-12)
+            return A;
+
         return result / total_signed_area;
     }
 
@@ -322,7 +325,7 @@ class VoronoiDiagram {
             result.vertices.push_back(Vector(1.0, 1.0));
             result.vertices.push_back(Vector(0.0, 1.0));
 
-            size_t num_results = 31; // 30 + maybe one is our point
+            size_t num_results = 201; // 200 + maybe one is our point ffs
             std::vector<uint32_t> ret_index(num_results);
             std::vector<double> out_dist_sqr(num_results);
             num_results = index.knnSearch(&Pi[0], num_results, &ret_index[0],
@@ -556,20 +559,19 @@ class Fluid {
         // Compute semi-discrete partial optimal transport
         // for all particles, add gravity and spring force towards cell
         // centroid, integrate acceleration->velocity and velocity->position
-        compute_vor();
         std::vector<Vector> new_particles(N_particles),
             new_velocities(N_particles);
         for (int i = 0; i < N_particles; i++) {
             Vector F_i_spring(0, 0);
             if (ot.vor.cells[i].area() > eps) {
-                F_i_spring =
-                    1 / epsilon2 * (ot.vor.cells[i].centroid() - particles[i]);
+                F_i_spring = 1.0 / epsilon2 *
+                             (ot.vor.cells[i].centroid() - particles[i]);
             }
             Vector F_i = F_i_spring + m_i * g;
             new_velocities[i] = velocities[i] + dt / m_i * F_i;
-            new_particles[i] = particles[i] + dt * velocities[i];
+            new_particles[i] = particles[i] + dt * new_velocities[i];
             // new_velocities[i] = new_velocities[i] * 0.99; // air friction
-            double bounce = 0.5; // some damping
+            double bounce = 0.0; // full damping
             if (new_particles[i][0] < eps) {
                 new_particles[i][0] = eps;
                 new_velocities[i][0] = std::abs(new_velocities[i][0]) * bounce;
@@ -588,11 +590,13 @@ class Fluid {
         }
         particles = new_particles;
         velocities = new_velocities;
+        compute_vor();
     }
 
     // just run the full simulation
     void run_simulation() {
-        double dt = 0.002;
+        compute_vor();
+        double dt = 0.005;
         std::filesystem::create_directory("fluid_video");
         for (int i = 0; i < 1000; i++) {
             time_step(dt);
@@ -618,14 +622,14 @@ int main() {
 
     engine.seed(0);
 
-    double radius = 0.25;
+    double radius = 0.3;
     fluid.fluid_volume = M_PI * radius * radius;
 
     for (int i = 0; i < fluid.N_particles; i++) {
         double r = radius * sqrt(uniform(engine));
         double theta = 2 * M_PI * uniform(engine);
         double x = 0.5 + r * cos(theta);
-        double y = 0.5 + r * sin(theta);
+        double y = 0.55 + r * sin(theta);
         fluid.particles.push_back(Vector(x, y));
         fluid.ot.vor.points.push_back(Vector(x, y));
         fluid.velocities.push_back(Vector(0, 0));
