@@ -13,7 +13,7 @@
 \usepackage{setspace}
 \usepackage{float}
 \usepackage{pdfpages}
-\usepackage[hypcap=true]{caption} 
+\usepackage[hypcap=true]{caption}
 \hypersetup{hypertexnames=false} % Fixes duplicate identifier warnings
 \usepackage{minted}
 \usepackage[export]{adjustbox}
@@ -115,13 +115,13 @@ where $\lambda_{i} = \frac{1}{N_{particles}}$ is the desired ``weight'' (area in
 	\caption{Starting configuration of liquid.}
 \end{figure}
 
-For this, we add a fictitious $w_{air}$ at the end of the weights vector and adapt the formulas to consider the effect of air: first, the cells are clipped by a disk of size $\sqrt{w_i - w_{air}}$ if $w_i > w_{air}$, which effectively sets a lower bound on the cell size and stops it from growing until the edges of the image. We can imagine it as the implementation of air pressure. We then just simulate the particles moving for a small amount of time according to gravity and a force pulling them towards the center of their Power cell, then recompute the Voronoï cells warmly (using the already-computed weights).
+For this, we add a fictitious $w_{air}$ at the end of the weights vector and adapt the formulas to consider the effect of air: first, the cells are clipped by a disk of size $\sqrt{w_i - w_{air}}$ if $w_i > w_{air}$, which effectively sets a lower bound on the cell size and stops it from growing until the edges of the image. We can imagine it as the implementation of air pressure. We then just simulate the particles moving for a small amount of time according to gravity and a force pulling them towards the center of their Power cell, then recompute the Voronoï cells warmly (using the already-computed weights, since they are very good approximations for the weights at the next step so LBFGS will converge faster).
 
 For some measurements, using $700$ particles occupying a disk of radius $0.3$ leading to $\pi 0.3^2 \approx 30\%$ water volume, $1000$ frames and comparing with $200$ neighbours, and clipping by a regular polygon with $50$ vertices, the running time is:
 
 \begin{terminalbox}
-	real    12m22.022s \\
-	user    189m43.430s \\
+	real    12m22.022s\\
+	user    189m43.430s\\
 	sys     1m12.968s
 \end{terminalbox}
 
@@ -131,6 +131,6 @@ The video is available in the repository. It was generated with $1000$ particles
 
 \subsection{Potential improvements}
 
-As was suggested, this project could have been done in 3D or with a Newtonian solver (instead of a quasi-Newtonian one). As for performance, it runs pretty smoothly, the only parameter that can reduce computation is the number of neighbours which could be fine-tuned.
+As was suggested, this project could have been done in 3D or with a Newtonian solver (instead of a quasi-Newtonian one). As for performance, it runs pretty smoothly, the only parameter that can reduce computation is the number of neighbours which could be fine-tuned. Additionally, we could compute a dynamic number of neighbours instead of hard-coding a value (having $30$ instead of $200$ neighbours for $700$ particles was a bug I had, which made me lose my mind as I had no idea why my animation was weird).
 
 \end{document}
