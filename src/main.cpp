@@ -325,7 +325,7 @@ class VoronoiDiagram {
             result.vertices.push_back(Vector(1.0, 1.0));
             result.vertices.push_back(Vector(0.0, 1.0));
 
-            size_t num_results = 151; // 150 + maybe one is our point ffs
+            size_t num_results = 301; // 30 + maybe one is our point ffs
             std::vector<uint32_t> ret_index(num_results);
             std::vector<double> out_dist_sqr(num_results);
             num_results = index.knnSearch(&Pi[0], num_results, &ret_index[0],
@@ -367,32 +367,10 @@ class VoronoiDiagram {
         const Vector N =
             Vector(v.data[1] - u.data[1], -(v.data[0] - u.data[0]));
 
-        Polygon result;
-        result.vertices.clear(); // redundant
-        for (size_t i = 0; i < V.vertices.size(); i++) {
-            auto &A = V.vertices[i];
-            auto &B = V.vertices[(i + 1) % V.vertices.size()];
+        Vector P0 = u - N;
+        Vector Pi = u + N;
 
-            bool A_inside = dot(u - A, N) > -eps;
-            bool B_inside = dot(u - B, N) > -eps;
-
-            if (A_inside != B_inside) {
-                auto P = A + dot(u - A, N) / dot(B - A, N) * (B - A);
-                if (result.vertices.empty() ||
-                    (result.vertices.back() - P).norm2() >
-                        eps) { // prevents duplicate points in case the edge
-                               // goes right through a vertex
-                    result.vertices.push_back(P);
-                }
-            }
-            if (B_inside) {
-                if (result.vertices.empty() ||
-                    (result.vertices.back() - B).norm2() > eps) {
-                    result.vertices.push_back(B);
-                }
-            }
-        }
-        return result;
+        return clip_by_bisector(V, P0, Pi);
     }
 
     static Polygon clip_by_bisector(const Polygon &V, const Vector &P0,
@@ -618,7 +596,7 @@ thread_local std::uniform_real_distribution<double> uniform(0, 1);
 
 int main() {
 
-    Fluid fluid(700);
+    Fluid fluid;
 
     engine.seed(0);
 
