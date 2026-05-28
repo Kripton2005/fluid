@@ -133,4 +133,16 @@ The video is available in the repository. It was generated with $1000$ particles
 
 As was suggested, this project could have been done in 3D or with a Newtonian solver (instead of a quasi-Newtonian one). As for performance, it runs pretty smoothly, the only parameter that can reduce computation is the number of neighbours which could be fine-tuned. Additionally, we could compute a dynamic number of neighbours instead of hard-coding a value (having $30$ instead of $200$ neighbours for $700$ particles was a bug I had, which made me lose my mind as I had no idea why my animation was weird).
 
+\subsection{Feedback on the course}
+
+The course overall was one of the most content filled CS courses I had in this program. However, because of the ``work only in the TD'' format, I often felt like I was implementing formulas I did not understand (the fact that TDs were sometimes right after the lectures did not help either, as I had no time to digest the content, but I think it is not in your control).
+
+This makes debugging things much more difficult, because I often did not know which of the things I implemented was breaking. Also, especially for the first project, I feel like we could not have gotten something really nice out of it with only the amount of time spent during the TDs, considering the amount of optional things we could do to increase its quality. I know that the state of the world is pretty terrible right now considering all the AI development which makes users stop learning, and honestly I do not have any concrete solution to it.
+
+Maybe having team-based project where contribution from each participant is quantified through the commits and the report, and a defense at the end? With teams of 3 there would be less than 20 teams, so less, better quality projects, that people have to explain. The only downside is that the projects do not seem easily parallelisable, which would mean teammates would have to wait on other teammates. And so that people are not leaving anything towards the end of the semester, instead of doing everything during the TD, they could have to do it until the next TD, which I think is reasonable.
+
+On another note, I really liked how the lecture notes were written, although I recommend putting them through an LLM to verify their correctness (for example, the gradient formula for the air weight was wrong in the lecture notes but right in the slides, the lecture notes use $v_i$ to compute $X_{i + 1}$ in \texttt{time\_step} in the lecture notes while the slides use $v_{i + 1}$). I liked that the teaching team seemed very prepared to help the students and often knew what the problem was. The lectures were sometimes very full with material though, which made them harder to follow (especially since we did not use most of the formulas in the actual TD). A suggestion would be to keep them more abstract, since the lecture notes already contain the necessary information (I think).
+
+I am open to talking more and could provide a channel of communication to my classmates (to make polls in our group chat, for example), if you would like me to. Thank you for being open to improvements $:)$.
+
 \end{document}
