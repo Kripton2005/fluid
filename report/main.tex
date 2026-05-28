@@ -131,7 +131,9 @@ The video is available in the repository. It was generated with $1000$ particles
 
 \subsection{Potential improvements}
 
-As was suggested, this project could have been done in 3D or with a Newtonian solver (instead of a quasi-Newtonian one). As for performance, it runs pretty smoothly, the only parameter that can reduce computation is the number of neighbours which could be fine-tuned. Additionally, we could compute a dynamic number of neighbours instead of hard-coding a value (having $30$ instead of $200$ neighbours for $700$ particles was a bug I had, which made me lose my mind as I had no idea why my animation was weird).
+As was suggested, this project could have been done in 3D or with a Newtonian solver (instead of a quasi-Newtonian one). Additionally, we could compute a dynamic number of neighbours instead of hard-coding a value (having $30$ instead of $200$ neighbours for $700$ particles was a bug I had, which made me lose my mind as I had no idea why my animation was weird).
+
+As for performance, it runs pretty smoothly, the only parameter that can reduce computation is the number of neighbours which could be fine-tuned. We can also reduce the number of particles, since the computation time is roughly proportional with it, but it would make the animation less of a liquid and more of a bubble tea.
 
 \subsection{Feedback on the course}
 
